@@ -16,12 +16,12 @@ compute).
 
 from __future__ import annotations
 
+from igraph import Graph
+from networkx import MultiDiGraph
+
 from abc import ABC, abstractmethod
 from collections.abc import Hashable, Iterable, Iterator, Mapping
-from typing import Any, Generic, Self, TypeAlias, TypeVar, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import pandas as pd
+from typing import Any, Generic, Optional, Self, TypeAlias, TypeVar, Union
 
 NodeID   : TypeAlias = Hashable
 EdgeKey  : TypeAlias = tuple[NodeID, NodeID]
@@ -39,66 +39,134 @@ class AbstractGraph(ABC, Generic[N, E]):
     :mod:`igraph`) for a full-network compute or slice the graph on
     defined groups for index level optimization.
 
-    A supply chain graph are almost always directional (asymmetric
-    lead time and cost from origin to destination) thus the graph
-    should always be of type :class:`networkx.DiGraph` or should be
-    defined like :class:`igraph.Graph(directed - True)` and passed for
-    initialization. In rare cases, when both the direction is possible
-    then both ``A → B`` and ``B → A`` edges must be defined.
+    :type  G: Union[MultiDiGraph, Graph]
+    :param G: An instance of either :class:`networkx.MultiDiGraph` or
+        of :class:`igraph.Graph` object based on the backend choice.
+
+    :type  name: str
+    :param name: Name of the model, this can be any valid string value,
+        useful for any type of logging or auditing purposes. Defaults
+        to none, which sets the attribute as the name of class.
+
+    :NOTE: A supply chain graph are almost always directional
+    (asymmetric lead time and cost from origin to destination) thus
+    the graph should always be of type :class:`networkx.DiGraph` or
+    should be defined like :class:`igraph.Graph(directed - True)` and
+    passed for initialization. In rare cases, when both the direction
+    is possible then both ``A → B`` and ``B → A`` edges must be defined.
+
+    :NOTE: The graph will always allow multiple-parallel edges between
+    the same pair of endpoints. This ensures that distinct lanes must
+    be modeled independently; e.g., different carriers, or contractors,
+    or transportation modes. This also ensures that edges are to be
+    defined in a manner that the distinct lanes between the source and
+    the destination from the multi-graph can be sliced properly based
+    on the group definitions, criteria, etc. which should be the
+    property of the edge attribute - in concrete implementation. The
+    native :class:`networkx.MultiDiGraph` is available, but the default
+    alternate is not available directly in the :mod:`igraph` module -
+    where the end user needs to define and handle the edge IDs and the
+    attributes seperately which is available in the base.
+
+    **Backend Graph Object: Advanced Usage**
+
+    The underlying backend graph object :class:`networkx.MultiDiGraph`
+    or the :class:`igraph.Graph` is available as ``G`` attribute to
+    the class. This is useful for advanced users who wants to work with
+    backend-specific routines that the abstract surface does not
+    automatically expose (custom :mod:`igraph` community detection, or
+    :mod:`networkx` internal algorithms, etc.) directly.
+
+    .. code-block:: python
+
+        import arcline
+        scnetwork = arcline.graph[...]
+
+        print(type(scnetwork.G))
+        >> nx.MultiDiGraph or igraph.Graph
+
+    **Backend Agnostic Base Methods**
+
+    Some basic functions/graph attributes are directly available as
+    part of the base class definition. This ensures that agnostic
+    approach is maintained when switching modules to define the graph.
+
+    .. code-block:: python
+
+        # .numNodes → Get the Total Number of Nodes in the Graph
+        # iGraph Method   : igraph.Graph.vcount()
+        # NetworkX Method : networkx.MultiDiGraph.number_of_nodes()
+        print(scnetwork.numNodes)
+        >> XYZ
+
+        # .numEdges → Get the Total Number of Edges in the Graph
+        # iGraph Method   : igraph.Graph.ecount()
+        # NetworkX Method : networkx.MultiDiGraph.number_of_edges()
+        print(scnetwork.numEdges)
+        >> XYZ
     """
 
-    @property
-    @abstractmethod
-    def numNodes(self) -> int: ...
+    def __init__(
+            self,
+            G : Union[MultiDiGraph, Graph],
+            name : Optional[str] = None
+    ) -> None:
+        self.G = G
+
+        # name of the graph class; defaults to class name
+        self.name = self.__set_name__(name = name)
 
 
     @property
-    @abstractmethod
-    def numEdges(self) -> int: ...
+    def numNodes(self) -> int:
+        """
+        Module agnostic method to return the total number of nodes in
+        the graph. This property internally calls the underlying
+        module's function to return the number of nodes.
+
+        :rtype:   int
+        :returns: The total number of nodes in the graph. The property
+            is module agnostic.
+        """
+
+        nodes = None
+
+        if isinstance(self.G, Graph):
+            nodes = self.G.vcount()
+        elif isinstance(self.G, MultiDiGraph):
+            nodes = self.G.number_of_nodes()
+        else:
+            raise TypeError(
+                f"Graph of Type `{type(self.G)}` is Not Suuported."
+            )
+
+        return nodes
 
 
     @property
-    @abstractmethod
-    def isMultiGraph(self) -> bool:
+    def numEdges(self) -> int:
         """
-        Whether the graph allows multiple parallel edges between the
-        same pair of endpoints.
+        Module agnostic method to return the total number of edges in
+        the graph. This property internally calls the underlying
+        module's function to return the number of edges.
 
-        A multigraph is required when distinct lanes between the same
-        origin and destination must be modeled independently (e.g.
-        different carriers, contracts, or transportation modes). Like
-        :attr:`directed`, this attribute is decided at construction
-        time and cannot be flipped on a live instance.
-
-        :rtype: bool
-        :returns: ``True`` if parallel edges are permitted, ``False``
-            otherwise.
+        :rtype:   int
+        :returns: The total number of edges in the graph. The property
+            is module agnostic.
         """
-        ...
 
+        edges = None
 
-    @property
-    @abstractmethod
-    def backend(self) -> Any:
-        """
-        Return the underlying backend graph object.
+        if isinstance(self.G, Graph):
+            edges = self.G.ecount()
+        elif isinstance(self.G, MultiDiGraph):
+            edges = self.G.number_of_edges()
+        else:
+            raise TypeError(
+                f"Graph of Type `{type(self.G)}` is Not Suuported."
+            )
 
-        This is an escape hatch for advanced users who need to call
-        backend-specific routines that the abstract surface does not
-        expose (custom :mod:`igraph` community detection, NetworkX
-        algorithm internals, etc.).
-
-        .. warning::
-
-            Code that touches ``backend`` is, by definition, no longer
-            backend-agnostic. Treat such code paths as backend
-            specific and gate them appropriately.
-
-        :rtype: Any
-        :returns: The wrapped backend graph (e.g. an
-            :class:`igraph.Graph` or :class:`networkx.DiGraph`).
-        """
-        ...
+        return edges
 
 
     @abstractmethod
@@ -737,6 +805,15 @@ class AbstractGraph(ABC, Generic[N, E]):
             that field.
         """
         ...
+
+
+    def __set_name__(self, name : Optional[str]) -> str:
+        """
+        Set the default name property of the model based on the name
+        of the class, when not provided.
+        """
+
+        return name or self.__class__.__name__
 
 
     def __len__(self) -> int:
