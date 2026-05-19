@@ -11,8 +11,7 @@ that can be modeled to define a cost function.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from arcline.graph.base.nodes import AbstractNode
 from arcline.graph.base.edges import AbstractEdge
@@ -170,6 +169,76 @@ class AbstractGraph(ABC):
         return len(self.edges)
 
 
+    @property
+    def _nodesByKey(self) -> Dict[str, AbstractNode]:
+        """
+        Returns all the nodes values by key, which is part of the
+        abstract class; helpful for faster lookup/iteration in graph.
+
+        **Example Usage**
+
+        The private property helps in faster search of nodes in the
+        graph by iterating over the indexed dictionary object.
+
+        .. code-block:: python
+
+            node = AbstractNode(...)
+            scnetwork = AbstractGraph(...)
+            print(scnetwork._nodesByKey)
+            >> {"N-ABC...1" : AbstractNode(...), ...}
+
+        :rtype:   Dict[str, AbstractNode]
+        :returns: An iterable dictionary of the node's hash key with
+            the node attributes.
+        """
+
+        return { node.hashKey : node for node in self.nodes }
+
+
+    @property
+    def _edgesByKey(self) -> Dict[str, Dict[Tuple[str, str], AbstractEdge]]:
+        """
+        Returns an iterable of edges value of the edge hash key, along
+        with the "src → dst" tuple mapping of the node's hash key.
+
+        **Example Usage**
+
+        The private property helps in faster search of edges in the
+        graph by iterating over the indexed dictionary object.
+
+        .. code-block:: python
+
+            ...
+            print(scnetwork._edgesByKey)
+            >> {"E-ABC...1" : {("N-ABC...1", "N-ABC...2") : ...}}
+
+        :rtype:   Dict[str, Dict[Tuple[str, str], AbstractEdge]]
+        :returns: An iterable dictionary of dictionary consisting of
+            the edge's hash key then the "src → dst" node's hash key
+            as the key for the internal dictionary.
+        """
+
+        return {
+            edge.hashKey : {
+                (edge.srcNode.hashKey, edge.srcNode.hashKey) : edge
+            }
+            for edge in self.edges
+        }
+
+
+    @property
+    def _edgesByNodePair(self) -> Dict[Tuple(str, str), str]: # type: ignore
+        """
+        Returns an iterable of edges by pairing the "src → dst" as the
+        keys and edges' hash key as the value.
+        """
+
+        return {
+            list(edgeConfig.keys())[0] : edgeKey
+            for edgeKey, edgeConfig in self._edgesByKey.items()
+        }
+
+
     @abstractmethod
     def buildGraph(self, *args, **kwargs) -> bool:
         """
@@ -257,7 +326,7 @@ class AbstractGraph(ABC):
 
 
     @abstractmethod
-    def neighbors(self, node : AbstractNode) -> Iterator[AbstractNode]:
+    def neighbors(self, node : AbstractNode) -> Tuple[AbstractNode]:
         """
         Iterate over the neighbors of a node. For a multi-directed
         graph, this returns only the unique nodes which are neighbors.
@@ -279,7 +348,7 @@ class AbstractGraph(ABC):
 
 
     @abstractmethod
-    def predecessors(self, node : AbstractNode) -> Iterator[AbstractNode]:
+    def predecessors(self, node : AbstractNode) -> Tuple[AbstractNode]:
         """
         Iterate over the in-neighbors of a node. This yields the
         nodes connected via an edge like ``src → node`` where the list
@@ -302,7 +371,7 @@ class AbstractGraph(ABC):
 
 
     @abstractmethod
-    def successors(self, node : AbstractNode) -> Iterator[AbstractNode]:
+    def successors(self, node : AbstractNode) -> Tuple[AbstractNode]:
         """
         Iterate over the out-neighbors of a node. This methods yields
         the nodes connected like ``node → dst`` where the list of
