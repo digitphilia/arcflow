@@ -12,10 +12,7 @@ that can be modeled to define a cost function.
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from typing import List, Optional, Union
-
-from igraph import Graph
-from networkx import MultiDiGraph
+from typing import Any, List, Optional
 
 from arcline.graph.base.nodes import AbstractNode
 from arcline.graph.base.edges import AbstractEdge
@@ -28,9 +25,12 @@ class AbstractGraph(ABC):
     :mod:`igraph`) for a full-network compute or slice the graph on
     defined groups for index level optimization.
 
-    :type  G: Union[MultiDiGraph, Graph]
-    :param G: An instance of either :class:`networkx.MultiDiGraph` or
-        of :class:`igraph.Graph` object based on the backend choice.
+    :type  G: Union[MultiDiGraph, Graph, ...]
+    :param G: An of graph objects from any compatible modules like
+        :class:`networkx.Graph`, or :class:`networkx.MultiDiGraph`, or
+        :class:`igraph.Graph` etc. The abstract class is designed to
+        work with any concrete module implementation without creating
+        any hard dependency for additional available backends.
 
     :type  name: str
     :param name: Name of the model, this can be any valid string value,
@@ -97,7 +97,7 @@ class AbstractGraph(ABC):
 
     def __init__(
             self,
-            G : Union[MultiDiGraph, Graph],
+            G : Any,
             nodes : List[AbstractNode],
             edges : List[AbstractEdge],
             name : Optional[str] = None
